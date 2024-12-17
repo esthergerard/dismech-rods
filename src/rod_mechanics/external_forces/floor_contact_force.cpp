@@ -14,9 +14,10 @@
 // is not specified
 FloorContactForce::FloorContactForce(const std::shared_ptr<SoftRobots>& soft_robots,
                                      double floor_delta, double floor_slipTol, double floor_z,
-                                     double floor_mu)
+                                     double floor_mu, double cylinder_radius_,
+                                     const Vec3& cylinder_axis_)
     : BaseForce(soft_robots), delta(floor_delta), slipTol(floor_slipTol), floor_z(floor_z),
-      floor_mu(floor_mu) {
+      floor_mu(floor_mu), cylinder_radius(cylinder_radius_), cylinder_axis(cylinder_axis_) {
     K1 = 15 / delta;
     K2 = 15 / slipTol;
 
@@ -43,13 +44,28 @@ void FloorContactForce::computeForce(double dt) {
     double v;  // exp(K1(floor_z - \Delta))
     min_dist = 1e7;
     num_contacts = 0;
+    double cylinder_radius;  // Radius of the cylindrical floor
+    Vec3 cylinder_axis;      // Unit vector along the central axis (e.g., (0, 0, 1) for z-axis)
     for (const auto& limb : soft_robots->limbs) {
         for (int i = 0; i < limb->nv; i++) {
             ind = 4 * i + 2;
             if (limb->isDOFJoint[ind] == 1)
                 continue;
 
-            dist = limb->x[ind] - limb->rod_radius - floor_z;
+            // OLD VERSION dist = limb->x[ind] - limb->rod_radius - floor_z;
+
+            // Get the vertex position
+            Vec3 vertex_pos = limb->getVertex(i);
+
+            // Project the vertex position onto the plane perpendicular to the cylinder axis
+            Vec3 projected_pos = vertex_pos - (vertex_pos.dot(cylinder_axis)) * cylinder_axis;
+
+            // Calculate the distance from the cylinder's axis
+            double distance_from_axis = projected_pos.norm();
+
+            // Distance to the cylinder surface
+            dist = distance_from_axis - cylinder_radius - limb->rod_radius;
+
             if (dist < min_dist)
                 min_dist = dist;
             if (dist > delta)
@@ -60,7 +76,15 @@ void FloorContactForce::computeForce(double dt) {
             f = (-2 * v * log(v + 1)) / (K1 * (v + 1));
             f *= contact_stiffness;
 
-            stepper->addForce(ind, f, limb_idx);
+            // OLD VERSION stepper->addForce(ind, f, limb_idx);
+
+            // Calculate the direction of the contact force (radial direction)
+            Vec3 contact_force_direction = projected_pos.normalized();
+
+            // Apply the force in the calculated direction (modified lines)
+            stepper->addForce(4 * i, f * contact_force_direction(0), limb_idx);
+            stepper->addForce(4 * i + 1, f * contact_force_direction(1), limb_idx);
+            stepper->addForce(4 * i + 2, f * contact_force_direction(2), limb_idx);
 
             double mu = std::max(floor_mu, limb->mu);
 
@@ -85,7 +109,9 @@ void FloorContactForce::computeForceAndJacobian(double dt) {
     int limb_idx = 0;
     int ind;
     Vec2 curr_node, pre_node;
-    double v;  // exp(K1(floor_z - \Delta))
+    double v;                // exp(K1(floor_z - \Delta))
+    double cylinder_radius;  // Radius of the cylindrical floor
+    Vec3 cylinder_axis;      // Unit vector along the central axis (e.g., (0, 0, 1) for z-axis)
     min_dist = 1e7;
     num_contacts = 0;
     for (const auto& limb : soft_robots->limbs) {
@@ -94,7 +120,19 @@ void FloorContactForce::computeForceAndJacobian(double dt) {
             if (limb->isDOFJoint[ind] == 1)
                 continue;
 
-            dist = limb->x[ind] - limb->rod_radius - floor_z;
+            // OLD VERSION dist = limb->x[ind] - limb->rod_radius - floor_z;
+            // Get the vertex position
+            Vec3 vertex_pos = limb->getVertex(i);
+
+            // Project the vertex position onto the plane perpendicular to the cylinder axis
+            Vec3 projected_pos = vertex_pos - (vertex_pos.dot(cylinder_axis)) * cylinder_axis;
+
+            // Calculate the distance from the cylinder's axis
+            double distance_from_axis = projected_pos.norm();
+
+            // Distance to the cylinder surface
+            dist = distance_from_axis - cylinder_radius - limb->rod_radius;
+
             if (dist < min_dist)
                 min_dist = dist;
             if (dist > delta)
@@ -108,8 +146,29 @@ void FloorContactForce::computeForceAndJacobian(double dt) {
             f *= contact_stiffness;
             J *= contact_stiffness;
 
-            stepper->addForce(ind, f, limb_idx);
-            stepper->addJacobian(ind, ind, J, limb_idx);
+            // OLD VERSION stepper->addForce(ind, f, limb_idx);
+            // OLD VERSION stepper->addJacobian(ind, ind, J, limb_idx);
+
+            // Calculate the direction of the contact force (radial direction)
+            Vec3 contact_force_direction = projected_pos.normalized();
+
+            // Apply the force in the calculated direction (modified lines)
+            stepper->addForce(4 * i, f * contact_force_direction(0), limb_idx);
+            stepper->addForce(4 * i + 1, f * contact_force_direction(1), limb_idx);
+            stepper->addForce(4 * i + 2, f * contact_force_direction(2), limb_idx);
+
+            // Calculate Jacobian for the radial force
+            Vec3 dDistance_dVertex =
+                projected_pos /
+                distance_from_axis;  // Derivative of distance w.r.t. vertex position
+            double df_dDistance = contact_stiffness * (2 * v * (log(v + 1) - 1) + v) /
+                                  pow(v + 1, 2);  // Derivative of force w.r.t. distance
+            Vec3 df_dVertex = df_dDistance * dDistance_dVertex;  // Chain rule
+
+            // Add Jacobian components
+            stepper->addJacobian(4 * i, 4 * i, df_dVertex(0), limb_idx);
+            stepper->addJacobian(4 * i, 4 * i + 1, df_dVertex(1), limb_idx);
+            stepper->addJacobian(4 * i, 4 * i + 2, df_dVertex(2), limb_idx);
 
             double mu = std::max(floor_mu, limb->mu);
 

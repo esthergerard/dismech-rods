@@ -15,14 +15,14 @@ void getRobotDescription(int argc, char** argv, const std::shared_ptr<SoftRobots
                          RenderParams& render_params) {
 
     sim_params.dt = 5e-3;
-    sim_params.sim_time = 1.0;
+    sim_params.sim_time = 5.0;
     sim_params.dtol = 1e-3;
     sim_params.enable_2d_sim = true;
     sim_params.adaptive_time_stepping = 10;
     sim_params.integrator = IMPLICIT_MIDPOINT;
 
     render_params.cmd_line_per = 0;
-    render_params.renderer = OPENGL;  // set to HEADLESS for headless rendering
+    render_params.renderer = OPENGL;
 
     // Create cylinder
     int n = 26;
@@ -31,17 +31,21 @@ void getRobotDescription(int argc, char** argv, const std::shared_ptr<SoftRobots
     double density = 509.2985;
     double poisson = 0.5;
     double mu = 0.4;
-    soft_robots->addLimb(Vec3(0.0, 0.00, 0.025), Vec3(1.0, 0.00, 0.025), n, density, radius,
-                         young_mod, poisson, mu);
+    soft_robots->addLimb(Vec3(0.0, 10.00, 0.025), Vec3(1.0, 10.00, 0.025), n, density, radius,
+                         young_mod, poisson,
+                         mu);  // use (0.0, 0.0, 0.025) and (1.0, 0.0, 0.025) for the plane
 
     // Add gravity
-    Vec3 gravity_vec(0.0, 0.0, -9.8);
+    Vec3 gravity_vec(0.0, -9.81,
+                     0.0);  // case with the floor at z = 0, put gravity on z : (0.0, 0.00, -9.81)
     forces->addForce(std::make_shared<GravityForce>(soft_robots, gravity_vec));
 
     // Add floor contact
     double delta = 5e-4;
     double nu = 1e-3;
     double floor_z = 0.0;
+    double cylinder_radius = 10.0;
+    Vec3 cylinder_axis = Vec3(0, 0, 1);
     forces->addForce(std::make_shared<FloorContactForce>(soft_robots, delta, nu, floor_z));
 
     // Create an external constant uniform force

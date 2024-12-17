@@ -10,7 +10,8 @@ class FloorContactForce : public BaseForce
 {
   public:
     FloorContactForce(const std::shared_ptr<SoftRobots>& soft_robots, double floor_delta,
-                      double floor_slipTol, double floor_z, double floor_mu = 0.0);
+                      double floor_slipTol, double floor_z, double floor_mu = 0.0,
+                      double cylinder_radius_ = 10.0, const Vec3& cylinder_axis_ = Vec3(0, 0, 1));
     ~FloorContactForce() override;
 
     void computeForce(double dt) override;
@@ -19,6 +20,8 @@ class FloorContactForce : public BaseForce
     double min_dist;
     double floor_z;
     int num_contacts;
+    double cylinder_radius;
+    Vec3 cylinder_axis;
 
   private:
     void computeFriction(const Vec2& curr_node, const Vec2& pre_node, double fn, double mu,
